@@ -35,6 +35,18 @@
 
 ![DB 저장 결과](images/05_db_saved_result.jpg)
 
+**텔레그램 알림 도착 화면**
+
+![텔레그램 알림](images/06_telegram_alert.png)
+
+**디스코드 알림 도착 화면**
+
+![디스코드 알림](images/07_discord_alert.png)
+
+**슬랙 알림 도착 화면**
+
+![슬랙 알림](images/08_slack_alert.png)
+
 ## ④ 실행 방법
 
 1. MySQL 준비 — Docker로 띄우거나 로컬 MySQL 사용. `init.sql` 실행하거나, 그냥 `app.py`를 최초 실행하면 `db.create_all()`이 자동으로 `security_events` 테이블을 만듭니다.
