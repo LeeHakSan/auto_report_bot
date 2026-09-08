@@ -1,0 +1,203 @@
+{
+  "name": "로그인 경보 자동화 봇",
+  "nodes": [
+    {
+      "id": "webhook-1",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-1200, 300],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "login-alert",
+        "responseMode": "onReceived",
+        "options": {}
+      }
+    },
+    {
+      "id": "code-1",
+      "name": "판정",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-960, 300],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// 거부 기준값 — 여기만 바꾸면 판정 기준이 바뀐다\nconst DENY_THRESHOLD = 10;\nconst MEDIUM_THRESHOLD = 7;\n\nconst body = $input.first().json.body || $input.first().json;\nconst student = body.student;\nconst alerts = body.alerts || [];\n\nconst results = [];\nfor (const alert of alerts) {\n  const level = alert.level;\n  const rule = alert.rule;\n  const src_ip = alert.ip;\n\n  let severity;\n  let decision;\n  if (level >= DENY_THRESHOLD) {\n    severity = 'High';\n    decision = 'deny';\n  } else if (level >= MEDIUM_THRESHOLD) {\n    severity = 'Medium';\n    decision = 'allow';\n  } else {\n    severity = 'Low';\n    decision = 'allow';\n  }\n\n  const reason = `level ${level} (rule ${rule}) -> ${decision}`;\n\n  results.push({\n    json: {\n      student,\n      src_ip,\n      level,\n      rule,\n      fail_count: 0,\n      severity,\n      decision,\n      reason,\n    },\n  });\n}\n\nreturn results;"
+      }
+    },
+    {
+      "id": "if-1",
+      "name": "거부인가?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [-720, 300],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-deny",
+              "leftValue": "={{$json.decision}}",
+              "rightValue": "deny",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "set-deny",
+      "name": "메시지 ❌ 거부",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [-480, 180],
+      "parameters": {
+        "mode": "manual",
+        "duplicateItem": false,
+        "includeOtherFields": true,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assign-message-deny",
+              "name": "message",
+              "type": "string",
+              "value": "={{ '🚫 [거부] IP: ' + $json.src_ip + ' / 사유: ' + $json.reason + ' / 심각도: ' + $json.severity + ' / 학생: ' + $json.student }}"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "set-allow",
+      "name": "메시지 ✅ 허용",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [-480, 460],
+      "parameters": {
+        "mode": "manual",
+        "duplicateItem": false,
+        "includeOtherFields": true,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assign-message-allow",
+              "name": "message",
+              "type": "string",
+              "value": "={{ '✅ [허용] ' + $json.src_ip + ' (' + $json.student + ')' }}"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "slack-1",
+      "name": "슬랙",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-160, 60],
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env[\"SLACK_WEBHOOK_URL\"]}}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"text\": $json.message } }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "discord-1",
+      "name": "디스코드",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-160, 220],
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env[\"DISCORD_WEBHOOK_URL\"]}}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"content\": $json.message } }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "telegram-1",
+      "name": "텔레그램",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-160, 380],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{$env[\"TELEGRAM_BOT_TOKEN\"]}}/sendMessage",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"chat_id\": $env[\"TELEGRAM_CHAT_ID\"], \"text\": $json.message } }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "save-db",
+      "name": "게시판 저장",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-160, 540],
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env[\"BOARD_API_URL\"]}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "={{$env[\"SECURITY_API_KEY\"]}}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"student\": $json.student, \"src_ip\": $json.src_ip, \"decision\": $json.decision, \"severity\": $json.severity, \"reason\": $json.reason, \"fail_count\": $json.fail_count } }}",
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [[{"node": "판정", "type": "main", "index": 0}]]
+    },
+    "판정": {
+      "main": [[{"node": "거부인가?", "type": "main", "index": 0}]]
+    },
+    "거부인가?": {
+      "main": [
+        [{"node": "메시지 ❌ 거부", "type": "main", "index": 0}],
+        [{"node": "메시지 ✅ 허용", "type": "main", "index": 0}]
+      ]
+    },
+    "메시지 ❌ 거부": {
+      "main": [[
+        {"node": "슬랙", "type": "main", "index": 0},
+        {"node": "디스코드", "type": "main", "index": 0},
+        {"node": "텔레그램", "type": "main", "index": 0},
+        {"node": "게시판 저장", "type": "main", "index": 0}
+      ]]
+    },
+    "메시지 ✅ 허용": {
+      "main": [[
+        {"node": "슬랙", "type": "main", "index": 0},
+        {"node": "디스코드", "type": "main", "index": 0},
+        {"node": "텔레그램", "type": "main", "index": 0},
+        {"node": "게시판 저장", "type": "main", "index": 0}
+      ]]
+    }
+  }
+}
